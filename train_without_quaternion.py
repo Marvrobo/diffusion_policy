@@ -7,10 +7,10 @@ from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 from diffusers.training_utils import EMAModel
 from diffusers.optimization import get_scheduler
 from tqdm.auto import tqdm
-# from model.model import ConditionalUnet1D, DepthCNN, get_resnet, replace_bn_with_gn
 from model.model import ConditionalUnet1D, get_resnet, replace_bn_with_gn
+# from model.model_without_quaternion import ConditionalUnet1D, get_resnet, replace_bn_with_gn
 import csv
-from data_preprocess import CustomDataset, LinearNormalizer
+from data_preprocess_without_quaternion import CustomDataset, LinearNormalizer
 from torchvision import transforms
 """
 2. set hyperparameters
@@ -100,11 +100,11 @@ rgb_vision_encoder = replace_bn_with_gn(rgb_vision_encoder)
 
 rgb_vision_feature_dim = 512 # ResNet18 has output dim of 512
 # obs_proprio_dim = 8 # xyz q(wxyz) grip_pct
-obs_proprio_dim = 7 # x, y, z, qw, qx, qy, qz
+obs_proprio_dim = 3 # x, y, z, qw, qx, qy, qz
 # depth_vision_feature_dim = 512
 # obs_dim = rgb_vision_feature_dim + obs_proprio_dim + depth_vision_feature_dim
 obs_dim = rgb_vision_feature_dim + obs_proprio_dim
-action_dim = 7
+action_dim = 3
 
 # create noise prediction network object
 noise_pred_net = ConditionalUnet1D(
@@ -239,7 +239,7 @@ with tqdm(range(NUM_EPOCHS), desc='Epoch') as tglobal:
                 ema.copy_to(ema_nets.parameters())
 
                 # Save the model
-                torch.save(ema_nets.state_dict(), f"trained/{model_name}")
+                torch.save(ema_nets.state_dict(), f"trained_without_quaternion/{model_name}")
 
 
 
@@ -253,3 +253,4 @@ with tqdm(range(NUM_EPOCHS), desc='Epoch') as tglobal:
 
 # the actions were also normalized. And action sequences should be 
 # DENORMALIZE DURING INFERENCE TIME
+

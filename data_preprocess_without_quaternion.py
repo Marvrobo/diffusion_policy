@@ -9,6 +9,7 @@ import pandas as pd
 from PIL import Image
 
 # MODIFICATION: rull out depth images and grip_pct.
+# MODIFICATION: this version should use only xyz in delta space, removing normalization.
 
 device = 'cpu'
 # device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -51,7 +52,7 @@ class CustomDataset(Dataset):
                 row = row.tolist()
                 timestamp = row[0]
                 # proprio = row[1:8] + [grip_signal]  # (x, y, z, qw, qx, qy, qz, gripper)
-                proprio = row[1:8] # (x, y, z, qw, qx, qy, qz)
+                proprio = row[1:4] # (x, y, z, qw, qx, qy, qz)
                 rgb_path = os.path.join(episode_path, "images", row[9])
                 # depth_path = os.path.join(episode_path, "images", row[10])
 
@@ -162,21 +163,25 @@ class LinearNormalizer:
     def normalize(self, x: torch.Tensor) -> torch.Tensor:
         pos = (x[..., :3] - self.mean) / (self.std + self.eps)  # normalize x, y, z
         quat = x[..., 3:]  # leave quaternion unchanged
+        return pos
         return torch.cat([pos, quat], dim=-1)
 
     def unnormalize(self, x: torch.Tensor) -> torch.Tensor:
         pos = x[..., :3] * (self.std + self.eps) + self.mean  # unnormalize x, y, z
         quat = x[..., 3:]  # leave quaternion unchanged
+        return pos
         return torch.cat([pos, quat], dim=-1)
 
     def normalize_to_device(self, x: torch.Tensor) -> torch.Tensor:
         pos = (x[..., :3] - self.mean.to(device)) / (self.std.to(device) + self.eps)
         quat = x[..., 3:]
+        return pos
         return torch.cat([pos, quat], dim=-1)
 
     def unnormalize_to_device(self, x: torch.Tensor) -> torch.Tensor:
         pos = x[..., :3] * (self.std.to(device) + self.eps) + self.mean.to(device)
         quat = x[..., 3:]
+        return pos
         return torch.cat([pos, quat], dim=-1)
 
     @classmethod
@@ -229,10 +234,6 @@ raw_dataset = CustomDataset(
 #     'mean': normalizer.mean,
 #     'std': normalizer.std
 # }, 'normalizer_stats.pth')
-
-
-
-
 
 
 

@@ -21,11 +21,14 @@ from PIL import Image
 import torch
 from torchvision import transforms
 from data_preprocess import LinearNormalizer
-from model.model import nets
+from model.model_without_quaternion import nets
 import collections
 from diffusers.schedulers.scheduling_ddim import DDIMScheduler
 import io
 
+# Notice. here if you use delta space. Then action here is actually delta values for xyz.
+
+QUATERNION = -1
 
 # This function cannot be used, for non-existing STATUS_AT_GOAL.
 def send_and_wait_for_arm(command_client, cmd):
@@ -41,7 +44,7 @@ def send_and_wait_for_arm(command_client, cmd):
 pred_horizon = 16
 obs_horizon = 2
 action_horizon = 8
-action_dim = 7 # xyz qwxyz
+action_dim = 3 # xyz qwxyz
 
 # Use DDIM for less backwards steps.
 noise_scheduler = DDIMScheduler(
@@ -107,7 +110,9 @@ def get_observation(state_client, image_client):
         qw, qx, qy, qz = body_T_hand.rot.w, body_T_hand.rot.x, body_T_hand.rot.y, body_T_hand.rot.z
         # grip_close = 0 if state.manipulator_state.gripper_open_percentage > 90 else 1
         # proprio_tensor = torch.tensor([x, y, z, qw, qx, qy, qz, grip_close], dtype=torch.float32).to(device)
-        proprio_tensor = torch.tensor([x, y, z, qw, qx, qy, qz], dtype=torch.float32).to(device)
+        # proprio_tensor = torch.tensor([x, y, z, qw, qx, qy, qz], dtype=torch.float32).to(device)
+        proprio_tensor = torch.tensor([x, y, z], dtype=torch.float32).to(device)
+
 
         proprio_tensor = normalizer.normalize_to_device(proprio_tensor).unsqueeze(0) # (1, 8) -> (1, 7)
 
@@ -268,7 +273,9 @@ def main():
 
              # execute action
             #  x, y, z, qw, qx, qy, qz, grip_close = action[i]
-             x, y, z, qw, qx, qy, qz = action[i]
+             dx, dy, dz= action[i]
+             x, y, z = x + dx, y + dy, z + dz
+             qw, qx, qy, qz = QUATERNION
 
              qw, qx, qy, qz = normalize_quaternion(qw, qx, qy, qz)
              print(action[i])

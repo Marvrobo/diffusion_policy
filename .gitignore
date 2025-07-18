@@ -2,3 +2,14 @@ DataCollection/
 DataCollection.zip
 ed25519
 ed25519.pub
+DataCollection_New.zip
+__pycache__/
+model/__pycache__
+Deprecated_version
+diffusion_1.0.pth
+diffusion_2.0.pth
+diffusion_3.0.pth
+diffusion_4.0.pth
+*.pyc
+*.csv
+

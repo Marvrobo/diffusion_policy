@@ -17,7 +17,7 @@ device = 'cpu'
 
 
 # Parameters
-pred_horizon = 16
+pred_horizon = 17
 obs_horizon = 2
 action_horizon = 8
 
@@ -25,11 +25,11 @@ action_horizon = 8
 #| |a|a|a|a|a|a|a|a|               actions executed: 8
 #|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p| actions predicted: 16
 
-pred_horizon = pred_horizon + 1 # since we are in delta space, we will lose one value for computation, so we manually add one.
+# pred_horizon = pred_horizon + 1 # since we are in delta space, we will lose one value for computation, so we manually add one.
 
 
 class CustomDataset(Dataset):
-    def __init__(self, episodes_dir,transform_rgb, obs_horizon=2,
+    def __init__(self, episodes_dir,transform_rgb, transform_depth, obs_horizon=2,
                  pred_horizon=16, normalizer=None):
         
         self.obs_horizon = obs_horizon
@@ -165,7 +165,7 @@ class LinearNormalizer:
 
 
 
-path_name = "../DataCollection_New/DataCollection"
+path_name = "../DataCollection"
 
 # Transformations for RGB images and depth images
 transform_rgb = transforms.Compose([

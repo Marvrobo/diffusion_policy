@@ -28,7 +28,7 @@ import io
 
 # Notice. here if you use delta space. Then action here is actually delta values for xyz.
 
-QUATERNION = -1
+QUATERNION = (0.680577993, -0.000285911, 0.732674062, 0.001487711)
 
 # This function cannot be used, for non-existing STATUS_AT_GOAL.
 def send_and_wait_for_arm(command_client, cmd):
@@ -187,6 +187,16 @@ def main():
     # Preparation: probably try manually at first:
     # unstow the arm, point the gripper towards the ground.
     print("Make sure the gripper is pointing towards the ground and be able to see the object")
+
+    # Initialization: set up the initialization status: x, y, z, qw, qx, qy, qz, make the gripper open.
+    x, y, z, qw, qx, qy, qz = 0.75924414, -0.121446341, 0.091800719, 0.729167342, 0.082954742, 0.67351222, -0.088401094
+    move_cmd = RobotCommandBuilder.arm_pose_command(x=x,y=y,z=z,qw=qw,qx=qx,qy=qy,qz=qz,frame_name="body",seconds=2)
+    command_client.robot_command(move_cmd)
+    gripper_cmd = RobotCommandBuilder.claw_gripper_open_command()
+    command_client.robot_command(gripper_cmd)
+    time.sleep(3.0)
+
+
 
     # Maintain a global deque storing observations.
     obs_deque = collections.deque(maxlen=obs_horizon) # {"proprio", "image", "depth"}

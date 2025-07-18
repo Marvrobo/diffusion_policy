@@ -26,8 +26,6 @@ import collections
 from diffusers.schedulers.scheduling_ddim import DDIMScheduler
 import io
 
-# Notice. here if you use delta space. Then action here is actually delta values for xyz.
-
 QUATERNION = (0.680577993, -0.000285911, 0.732674062, 0.001487711)
 
 # This function cannot be used, for non-existing STATUS_AT_GOAL.
@@ -98,7 +96,7 @@ def normalize_quaternion(qw, qx, qy, qz):
 # load the model then send it to GPU
 grasp_model = nets()
 # NOTICE: should modify the corrent model name.
-grasp_model.load_state_dict(torch.load("trained/diffusion_9.0.pth"))
+grasp_model.load_state_dict(torch.load("trained/diffusion_6.0.pth"))
 grasp_model = grasp_model.to(device)
 print(grasp_model)
 
@@ -188,16 +186,6 @@ def main():
     # unstow the arm, point the gripper towards the ground.
     print("Make sure the gripper is pointing towards the ground and be able to see the object")
 
-    # Initialization: set up the initialization status: x, y, z, qw, qx, qy, qz, make the gripper open.
-    x, y, z, qw, qx, qy, qz = 0.75924414, -0.121446341, 0.091800719, 0.729167342, 0.082954742, 0.67351222, -0.088401094
-    move_cmd = RobotCommandBuilder.arm_pose_command(x=x,y=y,z=z,qw=qw,qx=qx,qy=qy,qz=qz,frame_name="body",seconds=2)
-    command_client.robot_command(move_cmd)
-    gripper_cmd = RobotCommandBuilder.claw_gripper_open_command()
-    command_client.robot_command(gripper_cmd)
-    time.sleep(3.0)
-
-
-
     # Maintain a global deque storing observations.
     obs_deque = collections.deque(maxlen=obs_horizon) # {"proprio", "image", "depth"}
     
@@ -265,8 +253,7 @@ def main():
         # unnormalize action; naction: (B=1, pred_horizon, action_dim)
         # detach: all computations were performed on GPU in a computational graph. We need to detach it before send it to CPU.
         # action_pred = normalizer.unnormalize(naction.detach().cpu()[0]) # (pred_horizon, 8)
-        # action_pred = normalizer.unnormalize_to_device(naction[0]) # (pred_horizon, 7)
-        action_pred = naction[0]
+        action_pred = normalizer.unnormalize_to_device(naction[0]) # (pred_horizon, 7)
 
 
 
@@ -284,15 +271,16 @@ def main():
 
              # execute action
             #  x, y, z, qw, qx, qy, qz, grip_close = action[i]
-             dx, dy, dz= action[i]
-             x, y, z = x + dx, y + dy, z + dz
-             qw, qx, qy, qz = QUATERNION
+            #  x, y, z, qw, qx, qy, qz = action[i]
+             x, y, z = action[i]
 
-             qw, qx, qy, qz = normalize_quaternion(qw, qx, qy, qz)
+
+            #  qw, qx, qy, qz = normalize_quaternion(qw, qx, qy, qz)
+             qw, qx, qy, qz = QUATERNION
              print(action[i])
              move_cmd = RobotCommandBuilder.arm_pose_command(x=x,y=y,z=z,qw=qw,qx=qx,qy=qy,qz=qz,
              frame_name="body",
-             seconds=1
+             seconds=0.5
              )
             #  pose = SE3Pose(position=(x, y, z), rot=Quat(w=qw, x=qx, y=qy, z=qz))
             #  move_cmd = RobotCommandBuilder.arm_pose_command(
@@ -306,7 +294,7 @@ def main():
             #  send_and_wait_for_arm(command_client, move_cmd)
 
              command_client.robot_command(move_cmd)
-             time.sleep(1.0)
+             time.sleep(0.5)
 
              # if the grip_close is 1, command the gripper to close, exit the loop.
              # NOTICE THAT: HERE I SET THE THRESHOLD TO BE 0.7, instead of 0.5.

@@ -7,17 +7,15 @@ import os
 from pathlib import Path
 import pandas as pd
 from PIL import Image
-import numpy as np
 
 # MODIFICATION: rull out depth images and grip_pct.
-# MODIFICATION: this version should use only xyz in delta space, removing normalization.
 
 device = 'cpu'
 # device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 # Parameters
-pred_horizon = 17
+pred_horizon = 16
 obs_horizon = 2
 action_horizon = 8
 
@@ -25,18 +23,16 @@ action_horizon = 8
 #| |a|a|a|a|a|a|a|a|               actions executed: 8
 #|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p| actions predicted: 16
 
-# pred_horizon = pred_horizon + 1 # since we are in delta space, we will lose one value for computation, so we manually add one.
-
 
 class CustomDataset(Dataset):
-    def __init__(self, episodes_dir,transform_rgb, transform_depth, obs_horizon=2,
+    def __init__(self, episodes_dir,transform_rgb, obs_horizon=2,
                  pred_horizon=16, normalizer=None):
         
         self.obs_horizon = obs_horizon
         self.pred_horizon = pred_horizon
         self.transform_rgb = transform_rgb
 
-        self.transform_depth = transform_depth
+        # self.transform_depth = transform_depth
 
         self.normalizer = normalizer
         self.samples = [] # should store all valid sequences
@@ -49,20 +45,19 @@ class CustomDataset(Dataset):
             if not os.path.exists(csv_path): continue
             dataframe = pd.read_csv(csv_path)
 
-            # Get all time ali    gned-data
+            # Get all time aligned-data
             episode_data = []
             for idx, row in dataframe.iterrows():
                 row = row.tolist()
                 timestamp = row[0]
                 # proprio = row[1:8] + [grip_signal]  # (x, y, z, qw, qx, qy, qz, gripper)
-                proprio = row[1:4] # (x, y, z, qw, qx, qy, qz)
+                proprio = row[1:8] # (x, y, z, qw, qx, qy, qz)
                 rgb_path = os.path.join(episode_path, "images", row[9])
-                depth_path = os.path.join(episode_path, "images", row[10])
+                # depth_path = os.path.join(episode_path, "images", row[10])
 
                 episode_data.append({
                     "proprio": proprio,
-                    "rgb": rgb_path,
-                    "depth": depth_path
+                    "rgb": rgb_path
                 })       
 
             # Arrange for sequences, containing observation sequences and prediction horizon
@@ -82,13 +77,13 @@ class CustomDataset(Dataset):
 
         for frame in obs_seq:
             rgb = Image.open(frame["rgb"]).convert("RGB")
-            depth = Image.open(frame["depth"]).convert("L")
+            # depth = Image.open(frame["depth"]).convert("L")
 
             rgb = self.transform_rgb(rgb)
-            depth = self.transform_depth(depth)
+            # depth = self.transform_depth(depth)
 
             rgb_seq.append(rgb)
-            depth_seq.append(depth)
+            # depth_seq.append(depth)
             proprio = torch.tensor(frame["proprio"], dtype=torch.float32)
             # normalize proprioception in the observation
             if self.normalizer:
@@ -96,29 +91,67 @@ class CustomDataset(Dataset):
                 # append the proprioception to observation horizon
             proprio_seq.append(proprio)
 
-        # for frame in act_seq:
-        #     action = torch.tensor(frame["proprio"], dtype=torch.float32)
-        #     # normalize the action in the prediction horizon
-        #     if self.normalizer:
-        #         action = self.normalizer.normalize(action)
-        #         # append the action to the predicted action horizon
-        #     action_seq.append(action)
-
-
-        # --- Delta action computation ---
-        for i in range(len(act_seq) - 1):
-            pos_curr = torch.tensor(act_seq[i + 1]["proprio"], dtype=torch.float32)
-            pos_prev = torch.tensor(act_seq[i]["proprio"], dtype=torch.float32)
-            delta = pos_curr - pos_prev  # delta(x, y, z)
-            action_seq.append(delta)
+        for frame in act_seq:
+            action = torch.tensor(frame["proprio"], dtype=torch.float32)
+            # normalize the action in the prediction horizon
+            if self.normalizer:
+                action = self.normalizer.normalize(action)
+                # append the action to the predicted action horizon
+            # action_seq.append(torch.tensor(action, dtype=torch.float32))
+            action_seq.append(action)
 
         return {
             "rgb": torch.stack(rgb_seq),            # (obs_horizon, 3, H, W)
-            "depth": torch.stack(depth_seq),        # (obs_horizon, 1, H, W)
+            # "depth": torch.stack(depth_seq),        # (obs_horizon, 1, H, W)
             "proprio": torch.stack(proprio_seq),    # (obs_horizon, 8) conditioned actions, input
             "action": torch.stack(action_seq)       # (pred_horizon, 8) predicted actions
         }
     
+
+
+# class LinearNormalizer:
+#     def __init__(self, mean: torch.Tensor, std: torch.Tensor, eps=1e-8):
+#         self.mean = mean  # shape (7,)
+#         self.std = std    # shape (7,)
+#         self.eps = eps
+
+#     def normalize(self, x: torch.Tensor) -> torch.Tensor:
+#         x_main = (x[..., :7] - self.mean) / (self.std + self.eps)
+#         # x_grip = x[..., 7:]  # leave grip_pct unchanged
+#         return x_main
+#         # return torch.cat([x_main, x_grip], dim=-1)
+
+#     def unnormalize(self, x: torch.Tensor) -> torch.Tensor:
+#         x_main = x[..., :7] * (self.std + self.eps) + self.mean
+#         # x_grip = x[..., 7:]
+#         return x_main
+#         # return torch.cat([x_main, x_grip], dim=-1)
+
+#     def normalize_to_device(self, x: torch.Tensor) -> torch.Tensor:
+#         x_main = (x[..., :7] - self.mean.to(device)) / (self.std.to(device) + self.eps)
+#         # x_grip = x[..., 7:]  # leave grip_pct unchanged
+#         return x_main
+#         # return torch.cat([x_main, x_grip], dim=-1)
+
+#     def unnormalize_to_device(self, x: torch.Tensor) -> torch.Tensor:
+#         x_main = x[..., :7] * (self.std.to(device) + self.eps) + self.mean.to(device)
+#         # x_grip = x[..., 7:]
+#         return x_main
+#         # return torch.cat([x_main, x_grip], dim=-1)
+
+#     @classmethod
+#     def from_dataset(cls, dataset: torch.utils.data.Dataset):
+#         all_main_actions = []
+#         for i in range(len(dataset)):
+#             actions = dataset[i]['action']  
+#             all_main_actions.append(actions[:, :7])  # exclude grip_pct
+
+#         all_main_actions = torch.cat(all_main_actions, dim=0)  # (N, 7)
+#         mean = all_main_actions.mean(dim=0)
+#         std = all_main_actions.std(dim=0)
+#         return cls(mean, std)
+
+# only normalize the first three data: x, y, z position.
 
 class LinearNormalizer:
     def __init__(self, mean: torch.Tensor, std: torch.Tensor, eps=1e-8):
@@ -129,25 +162,21 @@ class LinearNormalizer:
     def normalize(self, x: torch.Tensor) -> torch.Tensor:
         pos = (x[..., :3] - self.mean) / (self.std + self.eps)  # normalize x, y, z
         quat = x[..., 3:]  # leave quaternion unchanged
-        return pos
         return torch.cat([pos, quat], dim=-1)
 
     def unnormalize(self, x: torch.Tensor) -> torch.Tensor:
         pos = x[..., :3] * (self.std + self.eps) + self.mean  # unnormalize x, y, z
         quat = x[..., 3:]  # leave quaternion unchanged
-        return pos
         return torch.cat([pos, quat], dim=-1)
 
     def normalize_to_device(self, x: torch.Tensor) -> torch.Tensor:
         pos = (x[..., :3] - self.mean.to(device)) / (self.std.to(device) + self.eps)
         quat = x[..., 3:]
-        return pos
         return torch.cat([pos, quat], dim=-1)
 
     def unnormalize_to_device(self, x: torch.Tensor) -> torch.Tensor:
         pos = x[..., :3] * (self.std.to(device) + self.eps) + self.mean.to(device)
         quat = x[..., 3:]
-        return pos
         return torch.cat([pos, quat], dim=-1)
 
     @classmethod
@@ -165,7 +194,7 @@ class LinearNormalizer:
 
 
 
-path_name = "../DataCollection"
+path_name = "DataCollection"
 
 # Transformations for RGB images and depth images
 transform_rgb = transforms.Compose([
@@ -176,24 +205,17 @@ transform_rgb = transforms.Compose([
         std=[0.229, 0.224, 0.225])
 ])
 
-
-transform_depth = transforms.Compose([
-    transforms.Lambda(lambda x: np.array(x).astype(np.float32) / 1000.0),  # mm → meters
-    transforms.Lambda(lambda x: np.clip(x, 0.2, 3.0)),                     # clamp to [0.2, 3.0]
-    transforms.Lambda(lambda x: 2 * (x - 0.2) / (3.0 - 0.2) - 1),          # normalize to [-1, 1]
-    transforms.Lambda(lambda x: Image.fromarray(x)),                      # back to PIL
-    transforms.Resize((224, 224)),
-    transforms.ToTensor()  # shape: (1, H, W)
-])
-
-
-
+# remove depth images.
+# transform_depth = transforms.Compose([
+#     transforms.Resize((224, 224)),
+#     transforms.ToTensor(),  # (1, H, W), values in [0, 1]
+#     transforms.Normalize(mean=[0.5], std=[0.5])  # simple normalization
+# ])
 
 # load raw dataset
 raw_dataset = CustomDataset(
     episodes_dir=path_name,
     transform_rgb=transform_rgb,
-    transform_depth=transform_depth,
     pred_horizon=pred_horizon,
     obs_horizon=obs_horizon,
     normalizer=None
@@ -207,6 +229,10 @@ raw_dataset = CustomDataset(
 #     'mean': normalizer.mean,
 #     'std': normalizer.std
 # }, 'normalizer_stats.pth')
+
+
+
+
 
 
 

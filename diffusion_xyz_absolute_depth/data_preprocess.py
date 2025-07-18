@@ -6,18 +6,17 @@ from torch.utils.data import DataLoader
 import os
 from pathlib import Path
 import pandas as pd
-from PIL import Image
 import numpy as np
+from PIL import Image
 
 # MODIFICATION: rull out depth images and grip_pct.
-# MODIFICATION: this version should use only xyz in delta space, removing normalization.
 
 device = 'cpu'
 # device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 # Parameters
-pred_horizon = 17
+pred_horizon = 16
 obs_horizon = 2
 action_horizon = 8
 
@@ -25,8 +24,15 @@ action_horizon = 8
 #| |a|a|a|a|a|a|a|a|               actions executed: 8
 #|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p| actions predicted: 16
 
-# pred_horizon = pred_horizon + 1 # since we are in delta space, we will lose one value for computation, so we manually add one.
 
+transform_depth = transforms.Compose([
+    transforms.Lambda(lambda x: np.array(x).astype(np.float32) / 1000.0),  # mm → meters
+    transforms.Lambda(lambda x: np.clip(x, 0.2, 3.0)),                     # clamp to [0.2, 3.0]
+    transforms.Lambda(lambda x: 2 * (x - 0.2) / (3.0 - 0.2) - 1),          # normalize to [-1, 1]
+    transforms.Lambda(lambda x: Image.fromarray(x)),                      # back to PIL
+    transforms.Resize((224, 224)),
+    transforms.ToTensor()  # shape: (1, H, W)
+])
 
 class CustomDataset(Dataset):
     def __init__(self, episodes_dir,transform_rgb, transform_depth, obs_horizon=2,
@@ -49,7 +55,7 @@ class CustomDataset(Dataset):
             if not os.path.exists(csv_path): continue
             dataframe = pd.read_csv(csv_path)
 
-            # Get all time ali    gned-data
+            # Get all time aligned-data
             episode_data = []
             for idx, row in dataframe.iterrows():
                 row = row.tolist()
@@ -96,21 +102,13 @@ class CustomDataset(Dataset):
                 # append the proprioception to observation horizon
             proprio_seq.append(proprio)
 
-        # for frame in act_seq:
-        #     action = torch.tensor(frame["proprio"], dtype=torch.float32)
-        #     # normalize the action in the prediction horizon
-        #     if self.normalizer:
-        #         action = self.normalizer.normalize(action)
-        #         # append the action to the predicted action horizon
-        #     action_seq.append(action)
-
-
-        # --- Delta action computation ---
-        for i in range(len(act_seq) - 1):
-            pos_curr = torch.tensor(act_seq[i + 1]["proprio"], dtype=torch.float32)
-            pos_prev = torch.tensor(act_seq[i]["proprio"], dtype=torch.float32)
-            delta = pos_curr - pos_prev  # delta(x, y, z)
-            action_seq.append(delta)
+        for frame in act_seq:
+            action = torch.tensor(frame["proprio"], dtype=torch.float32)
+            # normalize the action in the prediction horizon
+            if self.normalizer:
+                action = self.normalizer.normalize(action)
+                # append the action to the predicted action horizon
+            action_seq.append(action)
 
         return {
             "rgb": torch.stack(rgb_seq),            # (obs_horizon, 3, H, W)
@@ -128,27 +126,19 @@ class LinearNormalizer:
 
     def normalize(self, x: torch.Tensor) -> torch.Tensor:
         pos = (x[..., :3] - self.mean) / (self.std + self.eps)  # normalize x, y, z
-        quat = x[..., 3:]  # leave quaternion unchanged
         return pos
-        return torch.cat([pos, quat], dim=-1)
 
     def unnormalize(self, x: torch.Tensor) -> torch.Tensor:
         pos = x[..., :3] * (self.std + self.eps) + self.mean  # unnormalize x, y, z
-        quat = x[..., 3:]  # leave quaternion unchanged
         return pos
-        return torch.cat([pos, quat], dim=-1)
 
     def normalize_to_device(self, x: torch.Tensor) -> torch.Tensor:
         pos = (x[..., :3] - self.mean.to(device)) / (self.std.to(device) + self.eps)
-        quat = x[..., 3:]
         return pos
-        return torch.cat([pos, quat], dim=-1)
 
     def unnormalize_to_device(self, x: torch.Tensor) -> torch.Tensor:
         pos = x[..., :3] * (self.std.to(device) + self.eps) + self.mean.to(device)
-        quat = x[..., 3:]
         return pos
-        return torch.cat([pos, quat], dim=-1)
 
     @classmethod
     def from_dataset(cls, dataset: torch.utils.data.Dataset):
@@ -165,7 +155,7 @@ class LinearNormalizer:
 
 
 
-path_name = "../DataCollection"
+path_name = "DataCollection_New/DataCollection"
 
 # Transformations for RGB images and depth images
 transform_rgb = transforms.Compose([
@@ -177,27 +167,14 @@ transform_rgb = transforms.Compose([
 ])
 
 
-transform_depth = transforms.Compose([
-    transforms.Lambda(lambda x: np.array(x).astype(np.float32) / 1000.0),  # mm → meters
-    transforms.Lambda(lambda x: np.clip(x, 0.2, 3.0)),                     # clamp to [0.2, 3.0]
-    transforms.Lambda(lambda x: 2 * (x - 0.2) / (3.0 - 0.2) - 1),          # normalize to [-1, 1]
-    transforms.Lambda(lambda x: Image.fromarray(x)),                      # back to PIL
-    transforms.Resize((224, 224)),
-    transforms.ToTensor()  # shape: (1, H, W)
-])
-
-
-
-
 # load raw dataset
-raw_dataset = CustomDataset(
-    episodes_dir=path_name,
-    transform_rgb=transform_rgb,
-    transform_depth=transform_depth,
-    pred_horizon=pred_horizon,
-    obs_horizon=obs_horizon,
-    normalizer=None
-)
+# raw_dataset = CustomDataset(
+#     episodes_dir=path_name,
+#     transform_rgb=transform_rgb,
+#     pred_horizon=pred_horizon,
+#     obs_horizon=obs_horizon,
+#     normalizer=None
+# )
 
 # leave below lines commented, since there is no need to calcualte mean, std again.
 # get mean and std using classmethod of LinearNormalizer

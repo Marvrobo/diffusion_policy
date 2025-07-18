@@ -11,5 +11,4 @@ diffusion_2.0.pth
 diffusion_3.0.pth
 diffusion_4.0.pth
 *.pyc
-*.csv
 
